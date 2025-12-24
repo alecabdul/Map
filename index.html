@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Map of Shenanigans</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    
+    #app { display: flex; height: 100vh; height: 100dvh; }
+    
+    #sidebar {
+      width: 320px;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s ease, width 0.3s ease;
+      position: relative;
+      z-index: 100;
+    }
+    
+    #sidebar.collapsed {
+      transform: translateX(-320px);
+      width: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    
+    #toggle-btn {
+      position: absolute;
+      top: 15px;
+      left: 320px;
+      width: 30px;
+      height: 30px;
+      background: #1a1a2e;
+      border: none;
+      border-radius: 0 8px 8px 0;
+      color: #eee;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: left 0.3s ease;
+      z-index: 101;
+      font-size: 14px;
+    }
+    
+    #toggle-btn.collapsed {
+      left: 0;
+    }
+    
+    #toggle-btn:hover {
+      background: #2a2a4e;
+    }
+    
+    h1 { font-size: 1.25rem; margin-bottom: 4px; }
+    .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 15px; }
+    
+    .user-select { display: flex; gap: 10px; margin-bottom: 20px; }
+    
+    .user-btn {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #16213e;
+      color: #eee;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .user-btn:hover { border-color: #4ecca3; }
+    .user-btn.active-alec { border-color: #4dabf7; background: #1c3f5e; }
+    .user-btn.active-julia { border-color: #f783ac; background: #5e1c3f; }
+    
+    #pin-list { list-style: none; flex: 1; overflow-y: auto; }
+    
+    .pin-item {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-left: 4px solid;
+    }
+    .pin-item:hover { background: #1f3460; }
+    .pin-item.alec { border-left-color: #4dabf7; }
+    .pin-item.julia { border-left-color: #f783ac; }
+    .pin-item.visited { opacity: 0.6; }
+    
+    .pin-name { font-weight: 600; margin-bottom: 4px; }
+    .pin-meta { font-size: 0.7rem; color: #888; margin-bottom: 6px; }
+    
+    .pin-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    
+    .btn-small {
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-delete { background: #e94560; color: white; }
+    .btn-goto { background: #4ecca3; color: #1a1a2e; }
+    .btn-visited { background: #845ef7; color: white; }
+    .btn-visited.done { background: #555; }
+    
+    .empty-state { text-align: center; color: #666; padding: 20px; font-size: 0.9rem; }
+    
+    #map { flex: 1; }
+    
+    .search-box { margin-bottom: 15px; }
+    
+    #search-input {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #16213e;
+      color: #eee;
+      font-size: 0.9rem;
+    }
+    #search-input::placeholder { color: #666; }
+    #search-input:focus { outline: 2px solid #4ecca3; }
+    
+    .stats {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .stat { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.alec { background: #4dabf7; }
+    .dot.julia { background: #f783ac; }
+    
+    .category-filter {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+    .cat-btn {
+      padding: 5px 10px;
+      border: 1px solid #333;
+      border-radius: 15px;
+      background: transparent;
+      color: #888;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .cat-btn.active { background: #4ecca3; color: #1a1a2e; border-color: #4ecca3; }
+    
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    
+    .modal {
+      background: #1a1a2e;
+      padding: 25px;
+      border-radius: 12px;
+      text-align: center;
+      min-width: 280px;
+    }
+    .modal h2 { margin-bottom: 5px; font-size: 1.1rem; }
+    .modal-place { color: #4ecca3; margin-bottom: 20px; font-size: 0.9rem; }
+    
+    .cat-select-btns { display: flex; flex-direction: column; gap: 10px; }
+    .cat-select-btn {
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #16213e;
+      color: #eee;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .cat-select-btn:hover { background: #1f3460; }
+    
+    .modal-cancel {
+      margin-top: 15px;
+      padding: 8px 16px;
+      border: 1px solid #555;
+      border-radius: 6px;
+      background: transparent;
+      color: #888;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <button id="toggle-btn" onclick="toggleSidebar()">◀</button>
+    <div id="sidebar">
+      <h1>🗺️ Map of Shenanigans</h1>
+      <p class="subtitle">Alec & Julia's adventures</p>
+      
+      <div class="user-select">
+        <button class="user-btn" id="btn-alec" onclick="setUser('Alec')">🦆 Alec</button>
+        <button class="user-btn" id="btn-julia" onclick="setUser('Julia')">🥞 Julia</button>
+      </div>
+      
+      <div class="stats">
+        <div class="stat"><span class="dot alec"></span> <span id="alec-count">0</span> Alec</div>
+        <div class="stat"><span class="dot julia"></span> <span id="julia-count">0</span> Julia</div>
+        <div class="stat">✅ <span id="visited-count">0</span> visited</div>
+      </div>
+      
+      <div class="category-filter">
+        <button class="cat-btn active" data-cat="all">All</button>
+        <button class="cat-btn" data-cat="food">🍕 Food</button>
+        <button class="cat-btn" data-cat="drinks">🍸 Drinks</button>
+        <button class="cat-btn" data-cat="nature">🌲 Nature</button>
+        <button class="cat-btn" data-cat="other">📍 Other</button>
+      </div>
+      
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search for a place...">
+      </div>
+      
+      <ul id="pin-list">
+        <li class="empty-state">Loading pins...</li>
+      </ul>
+    </div>
+    <div id="map"></div>
+  </div>
+  
+  <div class="modal-overlay" id="cat-modal">
+    <div class="modal">
+      <h2>What kind of place?</h2>
+      <div class="modal-place" id="modal-place-name"></div>
+      <div class="cat-select-btns">
+        <button class="cat-select-btn" onclick="saveWithCategory('food')">🍕 Food</button>
+        <button class="cat-select-btn" onclick="saveWithCategory('drinks')">🍸 Drinks</button>
+        <button class="cat-select-btn" onclick="saveWithCategory('nature')">🌲 Nature</button>
+        <button class="cat-select-btn" onclick="saveWithCategory('other')">📍 Other</button>
+      </div>
+      <button class="modal-cancel" onclick="cancelPin()">Cancel</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB_Flbiz2fgRIH1341UME3qWiYRFbaiLKk",
+      authDomain: "alec-s-map.firebaseapp.com",
+      databaseURL: "https://alec-s-map-default-rtdb.firebaseio.com",
+      projectId: "alec-s-map",
+      storageBucket: "alec-s-map.firebasestorage.app",
+      messagingSenderId: "326304636332",
+      appId: "1:326304636332:web:e02f0729eadaa857a62e09"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const pinsRef = db.ref('pins');
+    
+    let map, searchBox, placesService;
+    let pins = {};
+    let markers = {};
+    let currentUser = localStorage.getItem('currentUser') || null;
+    let activeCategory = 'all';
+    let pendingPin = null;
+    let currentInfoWindow = null;
+    
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const btn = document.getElementById('toggle-btn');
+      sidebar.classList.toggle('collapsed');
+      btn.classList.toggle('collapsed');
+      btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    }
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 37.7749, lng: -122.4194 },
+        zoom: 13,
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+          { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
+        ]
+      });
+      
+      placesService = new google.maps.places.PlacesService(map);
+
+      const input = document.getElementById('search-input');
+      searchBox = new google.maps.places.SearchBox(input);
+      
+      searchBox.addListener('places_changed', () => {
+        const places = searchBox.getPlaces();
+        if (places.length === 0) return;
+        
+        const place = places[0];
+        if (!place.geometry) return;
+        
+        map.setCenter(place.geometry.location);
+        map.setZoom(16);
+        
+        if (!currentUser) {
+          alert('Please select who you are first! (Alec or Julia)');
+          return;
+        }
+        
+        pendingPin = {
+          name: place.name,
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          addedBy: currentUser,
+          addedAt: Date.now(),
+          visited: false
+        };
+        
+        document.getElementById('modal-place-name').textContent = place.name;
+        document.getElementById('cat-modal').classList.add('show');
+        input.value = '';
+      });
+
+      map.addListener('click', (e) => {
+        if (!currentUser) {
+          alert('Please select who you are first! (Alec or Julia)');
+          return;
+        }
+        
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        
+        // Reverse geocode to get place name
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          let placeName = 'Unnamed Location';
+          
+          if (status === 'OK' && results[0]) {
+            // Try to get a meaningful name
+            const poi = results.find(r => r.types.includes('point_of_interest') || r.types.includes('establishment'));
+            if (poi) {
+              placeName = poi.formatted_address.split(',')[0];
+            } else {
+              placeName = results[0].formatted_address.split(',')[0];
+            }
+          }
+          
+          pendingPin = {
+            name: placeName,
+            lat,
+            lng,
+            addedBy: currentUser,
+            addedAt: Date.now(),
+            visited: false
+          };
+          
+          document.getElementById('modal-place-name').textContent = placeName;
+          document.getElementById('cat-modal').classList.add('show');
+        });
+      });
+
+      pinsRef.on('value', (snapshot) => {
+        pins = snapshot.val() || {};
+        renderMarkers();
+        renderPinList();
+        updateStats();
+      });
+      
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeCategory = btn.dataset.cat;
+          renderPinList();
+        });
+      });
+      
+      updateUserButtons();
+    }
+    
+    function saveWithCategory(category) {
+      if (!pendingPin) return;
+      pendingPin.category = category;
+      pinsRef.push(pendingPin);
+      pendingPin = null;
+      document.getElementById('cat-modal').classList.remove('show');
+    }
+    
+    function cancelPin() {
+      pendingPin = null;
+      document.getElementById('cat-modal').classList.remove('show');
+    }
+
+    function setUser(user) {
+      currentUser = user;
+      localStorage.setItem('currentUser', user);
+      updateUserButtons();
+    }
+    
+    function updateUserButtons() {
+      document.getElementById('btn-alec').className = 'user-btn' + (currentUser === 'Alec' ? ' active-alec' : '');
+      document.getElementById('btn-julia').className = 'user-btn' + (currentUser === 'Julia' ? ' active-julia' : '');
+    }
+
+    function renderMarkers() {
+      Object.values(markers).forEach(m => m.setMap(null));
+      markers = {};
+      
+      Object.entries(pins).forEach(([id, pin]) => {
+        const color = pin.addedBy === 'Alec' ? '#4dabf7' : '#f783ac';
+        const emoji = pin.addedBy === 'Alec' ? '🦆' : '🥞';
+        
+        const marker = new google.maps.Marker({
+          position: { lat: pin.lat, lng: pin.lng },
+          map: map,
+          title: pin.name,
+          label: {
+            text: emoji,
+            fontSize: '20px'
+          },
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: pin.visited ? '#555' : color,
+            fillOpacity: 0.9,
+            strokeColor: '#fff',
+            strokeWeight: 2
+          }
+        });
+
+        const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
+        const infoContent = `
+          <div style="color:#333">
+            <strong>${catEmoji[pin.category] || '📍'} ${pin.name}</strong><br>
+            <small>Added by ${pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia'}</small>
+            ${pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : ''}
+          </div>
+        `;
+        
+        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        marker.addListener('click', () => {
+          if (currentInfoWindow) {
+            currentInfoWindow.close();
+          }
+          infoWindow.open(map, marker);
+          currentInfoWindow = infoWindow;
+        });
+        
+        markers[id] = marker;
+      });
+    }
+
+    function renderPinList() {
+      const pinList = document.getElementById('pin-list');
+      const pinArray = Object.entries(pins)
+        .map(([id, pin]) => ({ id, ...pin }))
+        .filter(p => activeCategory === 'all' || p.category === activeCategory)
+        .sort((a, b) => b.addedAt - a.addedAt);
+      
+      if (pinArray.length === 0) {
+        pinList.innerHTML = '<li class="empty-state">No pins yet! Search or click the map to add one.</li>';
+        return;
+      }
+      
+      const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
+      
+      pinList.innerHTML = pinArray.map(pin => `
+        <li class="pin-item ${pin.addedBy.toLowerCase()} ${pin.visited ? 'visited' : ''}" onclick="panToPin('${pin.id}')">
+          <div class="pin-name">${catEmoji[pin.category] || '📍'} ${pin.name}</div>
+          <div class="pin-meta">Added by ${pin.addedBy === 'Alec' ? '🦆' : '🥞'} ${pin.addedBy} • ${new Date(pin.addedAt).toLocaleDateString()}</div>
+          <div class="pin-actions">
+            <button class="btn-small btn-goto" onclick="event.stopPropagation(); panToPin('${pin.id}')">Go to</button>
+            <button class="btn-small btn-visited ${pin.visited ? 'done' : ''}" onclick="event.stopPropagation(); toggleVisited('${pin.id}')">
+              ${pin.visited ? '✓ Visited' : 'Mark visited'}
+            </button>
+            <button class="btn-small btn-delete" onclick="event.stopPropagation(); deletePin('${pin.id}')">Delete</button>
+          </div>
+        </li>
+      `).join('');
+    }
+    
+    function updateStats() {
+      const pinArray = Object.values(pins);
+      document.getElementById('alec-count').textContent = pinArray.filter(p => p.addedBy === 'Alec').length;
+      document.getElementById('julia-count').textContent = pinArray.filter(p => p.addedBy === 'Julia').length;
+      document.getElementById('visited-count').textContent = pinArray.filter(p => p.visited).length;
+    }
+
+    function panToPin(id) {
+      const pin = pins[id];
+      if (pin && markers[id]) {
+        if (currentInfoWindow) {
+          currentInfoWindow.close();
+        }
+        map.panTo({ lat: pin.lat, lng: pin.lng });
+        setTimeout(() => {
+          if (map.getZoom() < 16) {
+            smoothZoom(map, 16, map.getZoom());
+          }
+          google.maps.event.trigger(markers[id], 'click');
+        }, 500);
+      }
+    }
+    
+    function smoothZoom(map, targetZoom, currentZoom) {
+      if (currentZoom >= targetZoom) return;
+      const z = google.maps.event.addListener(map, 'zoom_changed', () => {
+        google.maps.event.removeListener(z);
+        smoothZoom(map, targetZoom, currentZoom + 1);
+      });
+      setTimeout(() => map.setZoom(currentZoom + 1), 80);
+    }
+    
+    function toggleVisited(id) {
+      pinsRef.child(id).update({ visited: !pins[id].visited });
+    }
+
+    function deletePin(id) {
+      if (confirm('Delete this pin?')) {
+        pinsRef.child(id).remove();
+      }
+    }
+  </script>
+  
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDJDr4bCn4sY6lzafv4gxuiUJsdoeOBaVU&libraries=places&callback=initMap" async defer></script>
+</body>
+</html>
