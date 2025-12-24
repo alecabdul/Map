@@ -17,7 +17,7 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      transition: transform 0.3s ease, width 0.3s ease;
+      transition: transform 0.3s ease, width 0.3s ease, padding 0.3s ease;
       position: relative;
       z-index: 100;
     }
@@ -28,6 +28,8 @@
       padding: 0;
       overflow: hidden;
     }
+    
+    h1 { font-size: 1.25rem; margin-bottom: 15px; }
     
     #toggle-btn {
       position: absolute;
@@ -48,17 +50,10 @@
       font-size: 14px;
     }
     
-    #toggle-btn.collapsed {
-      left: 0;
-    }
+    #toggle-btn.collapsed { left: 0; }
+    #toggle-btn:hover { background: #2a2a4e; }
     
-    #toggle-btn:hover {
-      background: #2a2a4e;
-    }
-    
-    h1 { font-size: 1.25rem; margin-bottom: 4px; }
     .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 15px; }
-    
     .user-select { display: flex; gap: 10px; margin-bottom: 20px; }
     
     .user-btn {
@@ -94,7 +89,6 @@
     
     .pin-name { font-weight: 600; margin-bottom: 4px; }
     .pin-meta { font-size: 0.7rem; color: #888; margin-bottom: 6px; }
-    
     .pin-actions { display: flex; gap: 6px; flex-wrap: wrap; }
     
     .btn-small {
@@ -206,7 +200,6 @@
     <button id="toggle-btn" onclick="toggleSidebar()">◀</button>
     <div id="sidebar">
       <h1>🗺️ Map of Shenanigans</h1>
-      <p class="subtitle">Alec & Julia's adventures</p>
       
       <div class="user-select">
         <button class="user-btn" id="btn-alec" onclick="setUser('Alec')">🦆 Alec</button>
@@ -277,6 +270,7 @@
     let activeCategory = 'all';
     let pendingPin = null;
     let currentInfoWindow = null;
+    const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
     
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar');
@@ -286,55 +280,58 @@
       btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
     }
     
-    // Collapse sidebar on mobile
     function checkMobile() {
-      const sidebar = document.getElementById('sidebar');
-      const btn = document.getElementById('toggle-btn');
       if (window.innerWidth <= 768) {
+        const sidebar = document.getElementById('sidebar');
+        const btn = document.getElementById('toggle-btn');
         sidebar.classList.add('collapsed');
         btn.classList.add('collapsed');
         btn.textContent = '▶';
       }
     }
     
-    async function getPlaceSummary(placeName, lat, lng) {
+    function getPlaceSummary(placeName, lat, lng, callback) {
       const request = {
         query: placeName,
-        fields: ['name', 'formatted_address', 'rating', 'user_ratings_total', 'price_level', 'types', 'editorial_summary', 'reviews'],
-        locationBias: { lat, lng }
+        fields: ['name', 'place_id'],
+        locationBias: { lat: lat, lng: lng }
       };
       
-      return new Promise((resolve) => {
-        placesService.findPlaceFromQuery(request, async (results, status) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && results[0]) {
-            const placeId = results[0].place_id;
-            
-            placesService.getDetails({ placeId, fields: ['editorial_summary', 'reviews', 'rating', 'price_level', 'types'] }, async (place, detailStatus) => {
-              if (detailStatus === google.maps.places.PlacesServiceStatus.OK) {
-                let summary = '';
-                
-                if (place.editorial_summary && place.editorial_summary.overview) {
-                  summary = place.editorial_summary.overview;
-                } else if (place.reviews && place.reviews.length > 0) {
-                  const reviewTexts = place.reviews.slice(0, 3).map(r => r.text).join(' ');
-                  
-                  try {
-                    const response = await fetch("https://api.anthropic.com/v1/messages", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        model: "claude-sonnet-4-20250514",
-                        max_tokens: 100,
-                        messages: [{
-                          role: "user",
-                          content: `Summarize this place in exactly one short sentence based on these reviews: "${reviewTexts}"`
-                        }]
-                      })
-                    });
-                    const data = await response.json();
-                    summary = data.content[0].text;
-                  } catch (e) {
-                    const priceStr = place.price_level ? '
+      placesService.findPlaceFromQuery(request, function(results, status) {
+        if (status === google.maps.places.PlacesServiceStatus.OK && results && results[0]) {
+          var placeId = results[0].place_id;
+          
+          placesService.getDetails({ 
+            placeId: placeId, 
+            fields: ['editorial_summary', 'reviews', 'rating', 'price_level', 'types'] 
+          }, function(place, detailStatus) {
+            if (detailStatus === google.maps.places.PlacesServiceStatus.OK && place) {
+              var summary = '';
+              
+              if (place.editorial_summary && place.editorial_summary.overview) {
+                summary = place.editorial_summary.overview;
+              } else if (place.reviews && place.reviews.length > 0) {
+                summary = place.reviews[0].text;
+                if (summary.length > 150) {
+                  summary = summary.substring(0, 150) + '...';
+                }
+              } else {
+                var priceStr = place.price_level ? '$'.repeat(place.price_level) : '';
+                var ratingStr = place.rating ? place.rating + '★' : '';
+                var typeStr = place.types && place.types[0] ? place.types[0].replace(/_/g, ' ') : '';
+                summary = [ratingStr, priceStr, typeStr].filter(Boolean).join(' · ') || 'No description available';
+              }
+              
+              callback(summary);
+            } else {
+              callback('No description available');
+            }
+          });
+        } else {
+          callback('No description available');
+        }
+      });
+    }
 
     function initMap() {
       map = new google.maps.Map(document.getElementById('map'), {
@@ -355,14 +352,14 @@
       
       placesService = new google.maps.places.PlacesService(map);
 
-      const input = document.getElementById('search-input');
+      var input = document.getElementById('search-input');
       searchBox = new google.maps.places.SearchBox(input);
       
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
+      searchBox.addListener('places_changed', function() {
+        var places = searchBox.getPlaces();
         if (places.length === 0) return;
         
-        const place = places[0];
+        var place = places[0];
         if (!place.geometry) return;
         
         map.setCenter(place.geometry.location);
@@ -387,23 +384,23 @@
         input.value = '';
       });
 
-      map.addListener('click', (e) => {
+      map.addListener('click', function(e) {
         if (!currentUser) {
           alert('Please select who you are first! (Alec or Julia)');
           return;
         }
         
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
+        var lat = e.latLng.lat();
+        var lng = e.latLng.lng();
         
-        // Reverse geocode to get place name
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          let placeName = 'Unnamed Location';
+        var geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat: lat, lng: lng } }, function(results, status) {
+          var placeName = 'Unnamed Location';
           
           if (status === 'OK' && results[0]) {
-            // Try to get a meaningful name
-            const poi = results.find(r => r.types.includes('point_of_interest') || r.types.includes('establishment'));
+            var poi = results.find(function(r) { 
+              return r.types.includes('point_of_interest') || r.types.includes('establishment'); 
+            });
             if (poi) {
               placeName = poi.formatted_address.split(',')[0];
             } else {
@@ -413,8 +410,8 @@
           
           pendingPin = {
             name: placeName,
-            lat,
-            lng,
+            lat: lat,
+            lng: lng,
             addedBy: currentUser,
             addedAt: Date.now(),
             visited: false
@@ -425,16 +422,16 @@
         });
       });
 
-      pinsRef.on('value', (snapshot) => {
+      pinsRef.on('value', function(snapshot) {
         pins = snapshot.val() || {};
         renderMarkers();
         renderPinList();
         updateStats();
       });
       
-      document.querySelectorAll('.cat-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.cat-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
           btn.classList.add('active');
           activeCategory = btn.dataset.cat;
           renderPinList();
@@ -471,19 +468,21 @@
     }
 
     function renderMarkers() {
-      Object.values(markers).forEach(m => m.setMap(null));
+      Object.values(markers).forEach(function(m) { m.setMap(null); });
       markers = {};
       
-      Object.entries(pins).forEach(([id, pin]) => {
-        // Filter by category
+      Object.entries(pins).forEach(function(entry) {
+        var id = entry[0];
+        var pin = entry[1];
+        
         if (activeCategory !== 'all' && pin.category !== activeCategory) {
           return;
         }
         
-        const color = pin.addedBy === 'Alec' ? '#4dabf7' : '#f783ac';
-        const emoji = pin.addedBy === 'Alec' ? '🦆' : '🥞';
+        var color = pin.addedBy === 'Alec' ? '#4dabf7' : '#f783ac';
+        var emoji = pin.addedBy === 'Alec' ? '🦆' : '🥞';
         
-        const marker = new google.maps.Marker({
+        var marker = new google.maps.Marker({
           position: { lat: pin.lat, lng: pin.lng },
           map: map,
           title: pin.name,
@@ -501,297 +500,34 @@
           }
         });
 
-        const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-        const infoContent = `
-          <div style="color:#333">
-            <strong>${catEmoji[pin.category] || '📍'} ${pin.name}</strong><br>
-            <small>Added by ${pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia'}</small>
-            ${pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : ''}
-          </div>
-        `;
+        var infoContent = '<div style="color:#333">' +
+          '<strong>' + (catEmoji[pin.category] || '📍') + ' ' + pin.name + '</strong><br>' +
+          '<small>Added by ' + (pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia') + '</small>' +
+          (pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : '') +
+          '</div>';
         
-        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-        marker.addListener('click', async () => {
+        var infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        
+        marker.addListener('click', function() {
           if (currentInfoWindow) {
             currentInfoWindow.close();
           }
           
-          infoWindow.setContent(infoContent + '<div style="color:#888;font-size:11px;margin-top:5px;">Loading summary...</div>');
+          infoWindow.setContent(infoContent);
           infoWindow.open(map, marker);
           currentInfoWindow = infoWindow;
           
-          const summary = await getPlaceSummary(pin.name, pin.lat, pin.lng);
-          const updatedContent = `
-            <div style="color:#333">
-              <strong>${catEmoji[pin.category] || '📍'} ${pin.name}</strong><br>
-              <small>Added by ${pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia'}</small>
-              ${pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : ''}
-              <div style="margin-top:8px;font-size:12px;color:#555;max-width:200px;">${summary}</div>
-            </div>
-          `;
-          infoWindow.setContent(updatedContent);
-        });
-        
-        markers[id] = marker;
-      });
-    }
-
-    function renderPinList() {
-      const pinList = document.getElementById('pin-list');
-      const pinArray = Object.entries(pins)
-        .map(([id, pin]) => ({ id, ...pin }))
-        .filter(p => activeCategory === 'all' || p.category === activeCategory)
-        .sort((a, b) => b.addedAt - a.addedAt);
-      
-      if (pinArray.length === 0) {
-        pinList.innerHTML = '<li class="empty-state">No pins yet! Search or click the map to add one.</li>';
-        return;
-      }
-      
-      const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-      
-      pinList.innerHTML = pinArray.map(pin => `
-        <li class="pin-item ${pin.addedBy.toLowerCase()} ${pin.visited ? 'visited' : ''}" onclick="panToPin('${pin.id}')">
-          <div class="pin-name">${catEmoji[pin.category] || '📍'} ${pin.name}</div>
-          <div class="pin-meta">Added by ${pin.addedBy === 'Alec' ? '🦆' : '🥞'} ${pin.addedBy} • ${new Date(pin.addedAt).toLocaleDateString()}</div>
-          <div class="pin-actions">
-            <button class="btn-small btn-goto" onclick="event.stopPropagation(); panToPin('${pin.id}')">Go to</button>
-            <button class="btn-small btn-visited ${pin.visited ? 'done' : ''}" onclick="event.stopPropagation(); toggleVisited('${pin.id}')">
-              ${pin.visited ? '✓ Visited' : 'Mark visited'}
-            </button>
-            <button class="btn-small btn-delete" onclick="event.stopPropagation(); deletePin('${pin.id}')">Delete</button>
-          </div>
-        </li>
-      `).join('');
-    }
-    
-    function updateStats() {
-      const pinArray = Object.values(pins);
-      document.getElementById('alec-count').textContent = pinArray.filter(p => p.addedBy === 'Alec').length;
-      document.getElementById('julia-count').textContent = pinArray.filter(p => p.addedBy === 'Julia').length;
-      document.getElementById('visited-count').textContent = pinArray.filter(p => p.visited).length;
-    }
-
-    function panToPin(id) {
-      const pin = pins[id];
-      if (pin && markers[id]) {
-        if (currentInfoWindow) {
-          currentInfoWindow.close();
-        }
-        map.panTo({ lat: pin.lat, lng: pin.lng });
-        setTimeout(() => {
-          if (map.getZoom() < 16) {
-            smoothZoom(map, 16, map.getZoom());
-          }
-          google.maps.event.trigger(markers[id], 'click');
-        }, 500);
-      }
-    }
-    
-    function smoothZoom(map, targetZoom, currentZoom) {
-      if (currentZoom >= targetZoom) return;
-      const z = google.maps.event.addListener(map, 'zoom_changed', () => {
-        google.maps.event.removeListener(z);
-        smoothZoom(map, targetZoom, currentZoom + 1);
-      });
-      setTimeout(() => map.setZoom(currentZoom + 1), 80);
-    }
-    
-    function toggleVisited(id) {
-      pinsRef.child(id).update({ visited: !pins[id].visited });
-    }
-
-    function deletePin(id) {
-      if (confirm('Delete this pin?')) {
-        pinsRef.child(id).remove();
-      }
-    }
-  </script>
-  
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDJDr4bCn4sY6lzafv4gxuiUJsdoeOBaVU&libraries=places&callback=initMap" async defer></script>
-</body>
-</html>
-.repeat(place.price_level) : '';
-                    const ratingStr = place.rating ? `${place.rating}★` : '';
-                    summary = `${ratingStr} ${priceStr} ${place.types ? place.types[0].replace(/_/g, ' ') : ''}`.trim();
-                  }
-                } else {
-                  const priceStr = place.price_level ? '
-
-    function initMap() {
-      map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: 37.7749, lng: -122.4194 },
-        zoom: 13,
-        mapTypeControlOptions: {
-          position: google.maps.ControlPosition.TOP_LEFT
-        },
-        styles: [
-          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-          { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-          { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-          { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
-        ]
-      });
-      
-      placesService = new google.maps.places.PlacesService(map);
-
-      const input = document.getElementById('search-input');
-      searchBox = new google.maps.places.SearchBox(input);
-      
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
-        if (places.length === 0) return;
-        
-        const place = places[0];
-        if (!place.geometry) return;
-        
-        map.setCenter(place.geometry.location);
-        map.setZoom(16);
-        
-        if (!currentUser) {
-          alert('Please select who you are first! (Alec or Julia)');
-          return;
-        }
-        
-        pendingPin = {
-          name: place.name,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-          addedBy: currentUser,
-          addedAt: Date.now(),
-          visited: false
-        };
-        
-        document.getElementById('modal-place-name').textContent = place.name;
-        document.getElementById('cat-modal').classList.add('show');
-        input.value = '';
-      });
-
-      map.addListener('click', (e) => {
-        if (!currentUser) {
-          alert('Please select who you are first! (Alec or Julia)');
-          return;
-        }
-        
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
-        
-        // Reverse geocode to get place name
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          let placeName = 'Unnamed Location';
-          
-          if (status === 'OK' && results[0]) {
-            // Try to get a meaningful name
-            const poi = results.find(r => r.types.includes('point_of_interest') || r.types.includes('establishment'));
-            if (poi) {
-              placeName = poi.formatted_address.split(',')[0];
-            } else {
-              placeName = results[0].formatted_address.split(',')[0];
+          getPlaceSummary(pin.name, pin.lat, pin.lng, function(summary) {
+            if (summary) {
+              var updatedContent = '<div style="color:#333">' +
+                '<strong>' + (catEmoji[pin.category] || '📍') + ' ' + pin.name + '</strong><br>' +
+                '<small>Added by ' + (pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia') + '</small>' +
+                (pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : '') +
+                '<div style="margin-top:8px;font-size:12px;color:#555;max-width:200px;">' + summary + '</div>' +
+                '</div>';
+              infoWindow.setContent(updatedContent);
             }
-          }
-          
-          pendingPin = {
-            name: placeName,
-            lat,
-            lng,
-            addedBy: currentUser,
-            addedAt: Date.now(),
-            visited: false
-          };
-          
-          document.getElementById('modal-place-name').textContent = placeName;
-          document.getElementById('cat-modal').classList.add('show');
-        });
-      });
-
-      pinsRef.on('value', (snapshot) => {
-        pins = snapshot.val() || {};
-        renderMarkers();
-        renderPinList();
-        updateStats();
-      });
-      
-      document.querySelectorAll('.cat-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          activeCategory = btn.dataset.cat;
-          renderPinList();
-        });
-      });
-      
-      updateUserButtons();
-    }
-    
-    function saveWithCategory(category) {
-      if (!pendingPin) return;
-      pendingPin.category = category;
-      pinsRef.push(pendingPin);
-      pendingPin = null;
-      document.getElementById('cat-modal').classList.remove('show');
-    }
-    
-    function cancelPin() {
-      pendingPin = null;
-      document.getElementById('cat-modal').classList.remove('show');
-    }
-
-    function setUser(user) {
-      currentUser = user;
-      localStorage.setItem('currentUser', user);
-      updateUserButtons();
-    }
-    
-    function updateUserButtons() {
-      document.getElementById('btn-alec').className = 'user-btn' + (currentUser === 'Alec' ? ' active-alec' : '');
-      document.getElementById('btn-julia').className = 'user-btn' + (currentUser === 'Julia' ? ' active-julia' : '');
-    }
-
-    function renderMarkers() {
-      Object.values(markers).forEach(m => m.setMap(null));
-      markers = {};
-      
-      Object.entries(pins).forEach(([id, pin]) => {
-        const color = pin.addedBy === 'Alec' ? '#4dabf7' : '#f783ac';
-        const emoji = pin.addedBy === 'Alec' ? '🦆' : '🥞';
-        
-        const marker = new google.maps.Marker({
-          position: { lat: pin.lat, lng: pin.lng },
-          map: map,
-          title: pin.name,
-          label: {
-            text: emoji,
-            fontSize: '20px'
-          },
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 18,
-            fillColor: pin.visited ? '#555' : color,
-            fillOpacity: 0.9,
-            strokeColor: '#fff',
-            strokeWeight: 2
-          }
-        });
-
-        const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-        const infoContent = `
-          <div style="color:#333">
-            <strong>${catEmoji[pin.category] || '📍'} ${pin.name}</strong><br>
-            <small>Added by ${pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia'}</small>
-            ${pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : ''}
-          </div>
-        `;
-        
-        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-        marker.addListener('click', () => {
-          if (currentInfoWindow) {
-            currentInfoWindow.close();
-          }
-          infoWindow.open(map, marker);
-          currentInfoWindow = infoWindow;
+          });
         });
         
         markers[id] = marker;
@@ -799,49 +535,47 @@
     }
 
     function renderPinList() {
-      const pinList = document.getElementById('pin-list');
-      const pinArray = Object.entries(pins)
-        .map(([id, pin]) => ({ id, ...pin }))
-        .filter(p => activeCategory === 'all' || p.category === activeCategory)
-        .sort((a, b) => b.addedAt - a.addedAt);
+      var pinList = document.getElementById('pin-list');
+      var pinArray = Object.entries(pins)
+        .map(function(entry) { return Object.assign({ id: entry[0] }, entry[1]); })
+        .filter(function(p) { return activeCategory === 'all' || p.category === activeCategory; })
+        .sort(function(a, b) { return b.addedAt - a.addedAt; });
       
       if (pinArray.length === 0) {
         pinList.innerHTML = '<li class="empty-state">No pins yet! Search or click the map to add one.</li>';
         return;
       }
       
-      const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-      
-      pinList.innerHTML = pinArray.map(pin => `
-        <li class="pin-item ${pin.addedBy.toLowerCase()} ${pin.visited ? 'visited' : ''}" onclick="panToPin('${pin.id}')">
-          <div class="pin-name">${catEmoji[pin.category] || '📍'} ${pin.name}</div>
-          <div class="pin-meta">Added by ${pin.addedBy === 'Alec' ? '🦆' : '🥞'} ${pin.addedBy} • ${new Date(pin.addedAt).toLocaleDateString()}</div>
-          <div class="pin-actions">
-            <button class="btn-small btn-goto" onclick="event.stopPropagation(); panToPin('${pin.id}')">Go to</button>
-            <button class="btn-small btn-visited ${pin.visited ? 'done' : ''}" onclick="event.stopPropagation(); toggleVisited('${pin.id}')">
-              ${pin.visited ? '✓ Visited' : 'Mark visited'}
-            </button>
-            <button class="btn-small btn-delete" onclick="event.stopPropagation(); deletePin('${pin.id}')">Delete</button>
-          </div>
-        </li>
-      `).join('');
+      pinList.innerHTML = pinArray.map(function(pin) {
+        return '<li class="pin-item ' + pin.addedBy.toLowerCase() + (pin.visited ? ' visited' : '') + '" onclick="panToPin(\'' + pin.id + '\')">' +
+          '<div class="pin-name">' + (catEmoji[pin.category] || '📍') + ' ' + pin.name + '</div>' +
+          '<div class="pin-meta">Added by ' + (pin.addedBy === 'Alec' ? '🦆' : '🥞') + ' ' + pin.addedBy + ' · ' + new Date(pin.addedAt).toLocaleDateString() + '</div>' +
+          '<div class="pin-actions">' +
+            '<button class="btn-small btn-goto" onclick="event.stopPropagation(); panToPin(\'' + pin.id + '\')">Go to</button>' +
+            '<button class="btn-small btn-visited ' + (pin.visited ? 'done' : '') + '" onclick="event.stopPropagation(); toggleVisited(\'' + pin.id + '\')">' +
+              (pin.visited ? '✓ Visited' : 'Mark visited') +
+            '</button>' +
+            '<button class="btn-small btn-delete" onclick="event.stopPropagation(); deletePin(\'' + pin.id + '\')">Delete</button>' +
+          '</div>' +
+        '</li>';
+      }).join('');
     }
     
     function updateStats() {
-      const pinArray = Object.values(pins);
-      document.getElementById('alec-count').textContent = pinArray.filter(p => p.addedBy === 'Alec').length;
-      document.getElementById('julia-count').textContent = pinArray.filter(p => p.addedBy === 'Julia').length;
-      document.getElementById('visited-count').textContent = pinArray.filter(p => p.visited).length;
+      var pinArray = Object.values(pins);
+      document.getElementById('alec-count').textContent = pinArray.filter(function(p) { return p.addedBy === 'Alec'; }).length;
+      document.getElementById('julia-count').textContent = pinArray.filter(function(p) { return p.addedBy === 'Julia'; }).length;
+      document.getElementById('visited-count').textContent = pinArray.filter(function(p) { return p.visited; }).length;
     }
 
     function panToPin(id) {
-      const pin = pins[id];
+      var pin = pins[id];
       if (pin && markers[id]) {
         if (currentInfoWindow) {
           currentInfoWindow.close();
         }
         map.panTo({ lat: pin.lat, lng: pin.lng });
-        setTimeout(() => {
+        setTimeout(function() {
           if (map.getZoom() < 16) {
             smoothZoom(map, 16, map.getZoom());
           }
@@ -852,283 +586,11 @@
     
     function smoothZoom(map, targetZoom, currentZoom) {
       if (currentZoom >= targetZoom) return;
-      const z = google.maps.event.addListener(map, 'zoom_changed', () => {
+      var z = google.maps.event.addListener(map, 'zoom_changed', function() {
         google.maps.event.removeListener(z);
         smoothZoom(map, targetZoom, currentZoom + 1);
       });
-      setTimeout(() => map.setZoom(currentZoom + 1), 80);
-    }
-    
-    function toggleVisited(id) {
-      pinsRef.child(id).update({ visited: !pins[id].visited });
-    }
-
-    function deletePin(id) {
-      if (confirm('Delete this pin?')) {
-        pinsRef.child(id).remove();
-      }
-    }
-  </script>
-  
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDJDr4bCn4sY6lzafv4gxuiUJsdoeOBaVU&libraries=places&callback=initMap" async defer></script>
-</body>
-</html>
-.repeat(place.price_level) : '';
-                  const ratingStr = place.rating ? `${place.rating}★` : '';
-                  summary = `${ratingStr} ${priceStr} ${place.types ? place.types[0].replace(/_/g, ' ') : ''}`.trim();
-                }
-                
-                resolve(summary || 'No description available');
-              } else {
-                resolve('No description available');
-              }
-            });
-          } else {
-            resolve('No description available');
-          }
-        });
-      });
-    }
-
-    function initMap() {
-      map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: 37.7749, lng: -122.4194 },
-        zoom: 13,
-        mapTypeControlOptions: {
-          position: google.maps.ControlPosition.TOP_LEFT
-        },
-        styles: [
-          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-          { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-          { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-          { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
-        ]
-      });
-      
-      placesService = new google.maps.places.PlacesService(map);
-
-      const input = document.getElementById('search-input');
-      searchBox = new google.maps.places.SearchBox(input);
-      
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
-        if (places.length === 0) return;
-        
-        const place = places[0];
-        if (!place.geometry) return;
-        
-        map.setCenter(place.geometry.location);
-        map.setZoom(16);
-        
-        if (!currentUser) {
-          alert('Please select who you are first! (Alec or Julia)');
-          return;
-        }
-        
-        pendingPin = {
-          name: place.name,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-          addedBy: currentUser,
-          addedAt: Date.now(),
-          visited: false
-        };
-        
-        document.getElementById('modal-place-name').textContent = place.name;
-        document.getElementById('cat-modal').classList.add('show');
-        input.value = '';
-      });
-
-      map.addListener('click', (e) => {
-        if (!currentUser) {
-          alert('Please select who you are first! (Alec or Julia)');
-          return;
-        }
-        
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
-        
-        // Reverse geocode to get place name
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          let placeName = 'Unnamed Location';
-          
-          if (status === 'OK' && results[0]) {
-            // Try to get a meaningful name
-            const poi = results.find(r => r.types.includes('point_of_interest') || r.types.includes('establishment'));
-            if (poi) {
-              placeName = poi.formatted_address.split(',')[0];
-            } else {
-              placeName = results[0].formatted_address.split(',')[0];
-            }
-          }
-          
-          pendingPin = {
-            name: placeName,
-            lat,
-            lng,
-            addedBy: currentUser,
-            addedAt: Date.now(),
-            visited: false
-          };
-          
-          document.getElementById('modal-place-name').textContent = placeName;
-          document.getElementById('cat-modal').classList.add('show');
-        });
-      });
-
-      pinsRef.on('value', (snapshot) => {
-        pins = snapshot.val() || {};
-        renderMarkers();
-        renderPinList();
-        updateStats();
-      });
-      
-      document.querySelectorAll('.cat-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          activeCategory = btn.dataset.cat;
-          renderPinList();
-        });
-      });
-      
-      updateUserButtons();
-    }
-    
-    function saveWithCategory(category) {
-      if (!pendingPin) return;
-      pendingPin.category = category;
-      pinsRef.push(pendingPin);
-      pendingPin = null;
-      document.getElementById('cat-modal').classList.remove('show');
-    }
-    
-    function cancelPin() {
-      pendingPin = null;
-      document.getElementById('cat-modal').classList.remove('show');
-    }
-
-    function setUser(user) {
-      currentUser = user;
-      localStorage.setItem('currentUser', user);
-      updateUserButtons();
-    }
-    
-    function updateUserButtons() {
-      document.getElementById('btn-alec').className = 'user-btn' + (currentUser === 'Alec' ? ' active-alec' : '');
-      document.getElementById('btn-julia').className = 'user-btn' + (currentUser === 'Julia' ? ' active-julia' : '');
-    }
-
-    function renderMarkers() {
-      Object.values(markers).forEach(m => m.setMap(null));
-      markers = {};
-      
-      Object.entries(pins).forEach(([id, pin]) => {
-        const color = pin.addedBy === 'Alec' ? '#4dabf7' : '#f783ac';
-        const emoji = pin.addedBy === 'Alec' ? '🦆' : '🥞';
-        
-        const marker = new google.maps.Marker({
-          position: { lat: pin.lat, lng: pin.lng },
-          map: map,
-          title: pin.name,
-          label: {
-            text: emoji,
-            fontSize: '20px'
-          },
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 18,
-            fillColor: pin.visited ? '#555' : color,
-            fillOpacity: 0.9,
-            strokeColor: '#fff',
-            strokeWeight: 2
-          }
-        });
-
-        const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-        const infoContent = `
-          <div style="color:#333">
-            <strong>${catEmoji[pin.category] || '📍'} ${pin.name}</strong><br>
-            <small>Added by ${pin.addedBy === 'Alec' ? '🦆 Alec' : '🥞 Julia'}</small>
-            ${pin.visited ? '<br><span style="color:green">✅ Visited!</span>' : ''}
-          </div>
-        `;
-        
-        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-        marker.addListener('click', () => {
-          if (currentInfoWindow) {
-            currentInfoWindow.close();
-          }
-          infoWindow.open(map, marker);
-          currentInfoWindow = infoWindow;
-        });
-        
-        markers[id] = marker;
-      });
-    }
-
-    function renderPinList() {
-      const pinList = document.getElementById('pin-list');
-      const pinArray = Object.entries(pins)
-        .map(([id, pin]) => ({ id, ...pin }))
-        .filter(p => activeCategory === 'all' || p.category === activeCategory)
-        .sort((a, b) => b.addedAt - a.addedAt);
-      
-      if (pinArray.length === 0) {
-        pinList.innerHTML = '<li class="empty-state">No pins yet! Search or click the map to add one.</li>';
-        return;
-      }
-      
-      const catEmoji = { food: '🍕', drinks: '🍸', nature: '🌲', other: '📍' };
-      
-      pinList.innerHTML = pinArray.map(pin => `
-        <li class="pin-item ${pin.addedBy.toLowerCase()} ${pin.visited ? 'visited' : ''}" onclick="panToPin('${pin.id}')">
-          <div class="pin-name">${catEmoji[pin.category] || '📍'} ${pin.name}</div>
-          <div class="pin-meta">Added by ${pin.addedBy === 'Alec' ? '🦆' : '🥞'} ${pin.addedBy} • ${new Date(pin.addedAt).toLocaleDateString()}</div>
-          <div class="pin-actions">
-            <button class="btn-small btn-goto" onclick="event.stopPropagation(); panToPin('${pin.id}')">Go to</button>
-            <button class="btn-small btn-visited ${pin.visited ? 'done' : ''}" onclick="event.stopPropagation(); toggleVisited('${pin.id}')">
-              ${pin.visited ? '✓ Visited' : 'Mark visited'}
-            </button>
-            <button class="btn-small btn-delete" onclick="event.stopPropagation(); deletePin('${pin.id}')">Delete</button>
-          </div>
-        </li>
-      `).join('');
-    }
-    
-    function updateStats() {
-      const pinArray = Object.values(pins);
-      document.getElementById('alec-count').textContent = pinArray.filter(p => p.addedBy === 'Alec').length;
-      document.getElementById('julia-count').textContent = pinArray.filter(p => p.addedBy === 'Julia').length;
-      document.getElementById('visited-count').textContent = pinArray.filter(p => p.visited).length;
-    }
-
-    function panToPin(id) {
-      const pin = pins[id];
-      if (pin && markers[id]) {
-        if (currentInfoWindow) {
-          currentInfoWindow.close();
-        }
-        map.panTo({ lat: pin.lat, lng: pin.lng });
-        setTimeout(() => {
-          if (map.getZoom() < 16) {
-            smoothZoom(map, 16, map.getZoom());
-          }
-          google.maps.event.trigger(markers[id], 'click');
-        }, 500);
-      }
-    }
-    
-    function smoothZoom(map, targetZoom, currentZoom) {
-      if (currentZoom >= targetZoom) return;
-      const z = google.maps.event.addListener(map, 'zoom_changed', () => {
-        google.maps.event.removeListener(z);
-        smoothZoom(map, targetZoom, currentZoom + 1);
-      });
-      setTimeout(() => map.setZoom(currentZoom + 1), 80);
+      setTimeout(function() { map.setZoom(currentZoom + 1); }, 80);
     }
     
     function toggleVisited(id) {
