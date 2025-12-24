@@ -203,8 +203,9 @@
 </head>
 <body>
   <div id="app">
+    <button id="toggle-btn" onclick="toggleSidebar()">◀</button>
     <div id="sidebar">
-      <h1>🗺️ Map of Shenanigans <button id="toggle-btn" onclick="toggleSidebar()">✕</button></h1>
+      <h1>🗺️ Map of Shenanigans</h1>
       <p class="subtitle">Alec & Julia's adventures</p>
       
       <div class="user-select">
@@ -234,7 +235,6 @@
         <li class="empty-state">Loading pins...</li>
       </ul>
     </div>
-    <button class="expand-btn" onclick="toggleSidebar()">☰</button>
     <div id="map"></div>
   </div>
   
@@ -280,13 +280,19 @@
     
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar');
+      const btn = document.getElementById('toggle-btn');
       sidebar.classList.toggle('collapsed');
+      btn.classList.toggle('collapsed');
+      btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
     }
 
     function initMap() {
       map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: 37.7749, lng: -122.4194 },
         zoom: 13,
+        mapTypeControlOptions: {
+          position: google.maps.ControlPosition.TOP_RIGHT
+        },
         styles: [
           { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
