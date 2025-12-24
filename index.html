@@ -31,7 +31,7 @@
     
     #toggle-btn {
       position: absolute;
-      top: 70px;
+      top: 100px;
       left: 320px;
       width: 30px;
       height: 30px;
@@ -203,9 +203,8 @@
 </head>
 <body>
   <div id="app">
-    <button id="toggle-btn" onclick="toggleSidebar()">◀</button>
     <div id="sidebar">
-      <h1>🗺️ Map of Shenanigans</h1>
+      <h1>🗺️ Map of Shenanigans <button id="toggle-btn" onclick="toggleSidebar()">✕</button></h1>
       <p class="subtitle">Alec & Julia's adventures</p>
       
       <div class="user-select">
@@ -235,6 +234,7 @@
         <li class="empty-state">Loading pins...</li>
       </ul>
     </div>
+    <button class="expand-btn" onclick="toggleSidebar()">☰</button>
     <div id="map"></div>
   </div>
   
@@ -280,10 +280,7 @@
     
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar');
-      const btn = document.getElementById('toggle-btn');
       sidebar.classList.toggle('collapsed');
-      btn.classList.toggle('collapsed');
-      btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
     }
 
     function initMap() {
