@@ -22,16 +22,11 @@
       z-index: 100;
     }
     
-    #sidebar.collapsed {
-      transform: translateX(-320px);
-      width: 0;
-      padding: 0;
-      overflow: hidden;
-    }
+    h1 { font-size: 1.25rem; margin-bottom: 4px; }
     
     #toggle-btn {
       position: absolute;
-      top: 100px;
+      top: 22px;
       left: 320px;
       width: 30px;
       height: 30px;
@@ -56,7 +51,10 @@
       background: #2a2a4e;
     }
     
-    h1 { font-size: 1.25rem; margin-bottom: 4px; }
+    #sidebar.collapsed {
+      transform: translateX(-320px);
+    }
+    
     .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 15px; }
     
     .user-select { display: flex; gap: 10px; margin-bottom: 20px; }
@@ -346,13 +344,11 @@
         const lat = e.latLng.lat();
         const lng = e.latLng.lng();
         
-        // Reverse geocode to get place name
         const geocoder = new google.maps.Geocoder();
         geocoder.geocode({ location: { lat, lng } }, (results, status) => {
           let placeName = 'Unnamed Location';
           
           if (status === 'OK' && results[0]) {
-            // Try to get a meaningful name
             const poi = results.find(r => r.types.includes('point_of_interest') || r.types.includes('establishment'));
             if (poi) {
               placeName = poi.formatted_address.split(',')[0];
